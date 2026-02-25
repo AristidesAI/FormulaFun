@@ -141,6 +141,12 @@ public class DemoSceneSetup : EditorWindow
         var leftBtnGO = CreateButton(controlsGO.transform, "LeftButton", "<",
             new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(100f, 0f), new Vector2(150f, 150f));
 
+        // Brake button (between knob and right turn)
+        var brakeBtnGO = CreateButton(controlsGO.transform, "BrakeButton", "BRAKE",
+            new Vector2(0.72f, 0.5f), new Vector2(0.72f, 0.5f), new Vector2(0f, 0f), new Vector2(120f, 120f));
+        var brakeBtnImage = brakeBtnGO.GetComponent<Image>();
+        brakeBtnImage.color = new Color(0.8f, 0.1f, 0.1f, 0.9f);
+
         // Right button
         var rightBtnGO = CreateButton(controlsGO.transform, "RightButton", ">",
             new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-100f, 0f), new Vector2(150f, 150f));
@@ -232,6 +238,7 @@ public class DemoSceneSetup : EditorWindow
         touchSO.FindProperty("carController").objectReferenceValue = carController;
         touchSO.FindProperty("leftButton").objectReferenceValue = leftBtnGO.GetComponent<RectTransform>();
         touchSO.FindProperty("rightButton").objectReferenceValue = rightBtnGO.GetComponent<RectTransform>();
+        touchSO.FindProperty("brakeButton").objectReferenceValue = brakeBtnGO.GetComponent<RectTransform>();
         touchSO.FindProperty("speedKnob").objectReferenceValue = speedKnob;
         touchSO.ApplyModifiedProperties();
 

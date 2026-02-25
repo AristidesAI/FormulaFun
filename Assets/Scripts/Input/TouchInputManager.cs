@@ -10,11 +10,13 @@ public class TouchInputManager : MonoBehaviour
     [Header("UI References")]
     [SerializeField] RectTransform leftButton;
     [SerializeField] RectTransform rightButton;
+    [SerializeField] RectTransform brakeButton;
     [SerializeField] SpeedKnobUI speedKnob;
 
     float steerValue;
     bool leftPressed;
     bool rightPressed;
+    bool brakePressed;
 
     void OnEnable()
     {
@@ -32,6 +34,7 @@ public class TouchInputManager : MonoBehaviour
 
         leftPressed = false;
         rightPressed = false;
+        brakePressed = false;
 
         // Process all active touches
         foreach (var touch in Touch.activeTouches)
@@ -43,6 +46,9 @@ public class TouchInputManager : MonoBehaviour
 
             if (RectTransformContainsScreenPoint(rightButton, screenPos))
                 rightPressed = true;
+
+            if (RectTransformContainsScreenPoint(brakeButton, screenPos))
+                brakePressed = true;
         }
 
         // Also support keyboard for editor testing
@@ -52,6 +58,8 @@ public class TouchInputManager : MonoBehaviour
                 leftPressed = true;
             if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed)
                 rightPressed = true;
+            if (Keyboard.current.spaceKey.isPressed)
+                brakePressed = true;
         }
 
         // Combine steering
@@ -60,6 +68,11 @@ public class TouchInputManager : MonoBehaviour
         if (rightPressed) steerValue += 1f;
 
         carController.SetSteerInput(steerValue);
+
+        // Brake: slam knob to neutral and activate drift
+        carController.SetBrake(brakePressed);
+        if (brakePressed && speedKnob != null)
+            speedKnob.ForceNeutral();
 
         // Speed knob handles its own touch input and calls carController.SetThrottle
     }

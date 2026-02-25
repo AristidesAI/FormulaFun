@@ -56,18 +56,41 @@ The venv uses Python 3.10 (homebrew) with mlagents 1.1.0, PyTorch 2.10.0, and ON
 - Tracks are assembled from modular Racing Kit pieces (road segments, barriers, decorations)
 
 ### Key Directories
-- `Assets/Racing Kit/` — Third-party modular racing asset pack (112 FBX models in multiple formats: FBX, DAE, GLTF, OBJ). Contains road segments (straights, corners, ramps, bridges, splits), barriers, grandstands, pit buildings, race cars, and decorations. Track generation should compose these pieces.
-- `Assets/Scenes/SampleScene.unity` — Main scene (only scene in build settings)
-- `Assets/Settings/` — URP render pipeline assets (Mobile_RPAsset, PC_RPAsset and their renderers)
+- `Assets/Racing Kit/` — Third-party modular racing asset pack (112 FBX models). Road segments, barriers, grandstands, pit buildings, race cars, and decorations. No ramps/jumps (removed from game).
+- `Assets/Scripts/Car/` — CarController (Rigidbody arcade physics, brake/drift)
+- `Assets/Scripts/Camera/` — IsometricCameraController (fixed-rotation follow cam)
+- `Assets/Scripts/Input/` — TouchInputManager (Enhanced Touch left/right/brake), SpeedKnobUI (gear knob)
+- `Assets/Scripts/Track/` — TrackPieceDatabase (piece catalog with grid sizes), TrackGenerator (grid-based procedural gen), Checkpoint/CheckpointManager (ML-Agents rewards)
+- `Assets/Scripts/TrackBuilder/` — TrackLayout (JSON deserialization), TrackImporter (editor import from website builder JSON)
+- `Assets/Scripts/Agent/` — CarAgent (ML-Agents Agent subclass with raycasts + checkpoint rewards)
+- `Assets/Scripts/Game/` — GameManager (state machine singleton), RaceTimer, DemoAutoStart
+- `Assets/Scripts/UI/` — RaceHUD, MainMenuUI, GameSettingsUI
+- `Assets/Scripts/Editor/` — DemoSceneSetup (builds entire DemoScene programmatically)
+- `Assets/Scenes/DemoScene.unity` — Playable demo scene
+- `Assets/Settings/` — URP render pipeline assets (Mobile_RPAsset, PC_RPAsset)
 - `Assets/InputSystem_Actions.inputactions` — Input action definitions
+- `js/` — Website track builder (JavaScript): gridSystem.js, trackPieces.js, placement.js, etc.
 
-### Racing Kit Track Pieces (naming conventions)
-Road segments follow the pattern `road{Type}{Variant}`:
-- Straights: `roadStraight`, `roadStraightLong`, `roadStraightBridge`, etc.
-- Corners: `roadCornerSmall`, `roadCornerLarge`, `roadCornerLarger` (with border/sand/wall variants and inner pieces)
-- Special: `roadStart`, `roadStartPositions`, `roadEnd`, `roadSplit*`, `roadRamp*`, `roadCrossing`, `roadPit*`
-- Decorations/props: `barrier*`, `fence*`, `grandStand*`, `light*`, `pylon`, `flag*`, `billboard*`
-- Cars: `raceCarGreen`, `raceCarOrange`, `raceCarRed`, `raceCarWhite`
+### Racing Kit Track Pieces (grid sizes from js/trackPieces.js)
+Road segments follow `road{Type}{Variant}`. Grid sizes (W×D):
+- **Straights 1×1:** `roadStraight`, `roadStraightArrow`
+- **Straights 1×2:** `roadStraightLong`, `roadStraightLongMid`, `roadStraightLongBump(Round)`, `roadBump`
+- **Straights 2×2:** `roadStraightSkew`
+- **Corners Small 1×1:** `roadCornerSmall(Border|Sand|Square|Wall)`
+- **Corners Large 2×2:** `roadCornerLarge(Border|BorderInner|Sand|SandInner|Wall|WallInner)`
+- **Corners Larger 3×3:** `roadCornerLarger(Border|BorderInner|Sand|SandInner|Wall|WallInner)`
+- **Start/End:** `roadStart` (2×2), `roadStartPositions` (1×2), `roadEnd` (1×2)
+- **No ramps** — removed from game (flat tracks only)
+- Decorations/props: `barrier*`, `fence*`, `grandStand*`, `light*`, `pylon`, `flag*`, `billboard*` (all 1×1)
+- Cars: `raceCarGreen`, `raceCarOrange`, `raceCarRed`, `raceCarWhite` (all 1×1)
+
+### Track Generation System
+The procedural TrackGenerator uses a grid-based turtle-walk algorithm:
+1. Places pieces on a 2D occupancy grid (matching js/gridSystem.js logic)
+2. Cursor tracks position + heading; straights advance, corners turn 90°
+3. Backtracking resolves dead ends; closing logic steers back to start
+4. Each piece gets a Checkpoint trigger for ML-Agents reward signals
+5. FBX model variants are randomly selected per ConnShape (visual variety)
 
 ### ML-Agents Integration
 The training pipeline follows the standard Unity ML-Agents workflow:

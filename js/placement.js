@@ -58,6 +58,7 @@ export class PlacementController {
 
         if (this.ghostMesh) {
             this.ghostMesh.rotation.y = THREE.MathUtils.degToRad(-this.currentRotation);
+            this._updateGhostPosition();
             this._updateHover();
         }
 
@@ -145,7 +146,11 @@ export class PlacementController {
     instantiatePiece(placed) {
         const model = getClone(placed.modelId);
         if (!model) return;
-        model.position.set(placed.anchorX, 0, placed.anchorZ);
+        const def = getPieceDef(placed.modelId);
+        if (!def) return;
+        // Position model at the center of its occupied cells
+        const center = this.grid.getCellCenter(def, placed.anchorX, placed.anchorZ, placed.rotation);
+        model.position.set(center.x, 0, center.z);
         model.rotation.y = THREE.MathUtils.degToRad(-placed.rotation);
         model.userData.pieceId = placed.id;
         model.traverse(child => { child.userData.pieceId = placed.id; });
@@ -162,9 +167,7 @@ export class PlacementController {
         if (this.selectedPieceDef) {
             this.ghostGridX = pos.x;
             this.ghostGridZ = pos.z;
-            if (this.ghostMesh) {
-                this.ghostMesh.position.set(pos.x, 0, pos.z);
-            }
+            this._updateGhostPosition();
             this._updateHover();
         }
     }
@@ -236,10 +239,21 @@ export class PlacementController {
         const pt = new THREE.Vector3();
         const hit = this.raycaster.ray.intersectPlane(this.groundPlane, pt);
         if (!hit) return null;
-        return { x: Math.round(pt.x), z: Math.round(pt.z) };
+        // Use Math.floor to get the correct cell index
+        // Cell (x, z) spans from world (x, z) to (x+1, z+1)
+        return { x: Math.floor(pt.x), z: Math.floor(pt.z) };
     }
 
     // --- Private: ghost + hover highlights ---
+
+    _updateGhostPosition() {
+        if (!this.ghostMesh || !this.selectedPieceDef) return;
+        // Position ghost at the center of the prospective occupied cells
+        const center = this.grid.getCellCenter(
+            this.selectedPieceDef, this.ghostGridX, this.ghostGridZ, this.currentRotation
+        );
+        this.ghostMesh.position.set(center.x, 0, center.z);
+    }
 
     _createGhost() {
         this._removeGhost();
@@ -333,9 +347,13 @@ export class PlacementController {
         const edgeMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 });
 
         for (const [x, z] of cells) {
+            // Center highlights at the cell center (x+0.5, z+0.5)
+            const cx = x + 0.5;
+            const cz = z + 0.5;
+
             const quad = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96), fillMat);
             quad.rotation.x = -Math.PI / 2;
-            quad.position.set(x, 0.015, z);
+            quad.position.set(cx, 0.015, cz);
             this.scene.add(quad);
             arr.push(quad);
 
@@ -345,7 +363,7 @@ export class PlacementController {
                 new THREE.Vector3(-0.48, 0, -0.48),
             ];
             const edge = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), edgeMat);
-            edge.position.set(x, 0.025, z);
+            edge.position.set(cx, 0.025, cz);
             this.scene.add(edge);
             arr.push(edge);
         }

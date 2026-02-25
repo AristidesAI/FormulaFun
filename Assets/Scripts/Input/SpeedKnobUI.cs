@@ -113,5 +113,11 @@ public class SpeedKnobUI : MonoBehaviour, IDragHandler, IPointerDownHandler, IPo
         }
     }
 
+    public void ForceNeutral()
+    {
+        isDragging = false;
+        SetGear(0);
+    }
+
     public void SetCarController(CarController cc) => carController = cc;
 }

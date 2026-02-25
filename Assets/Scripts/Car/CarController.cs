@@ -9,6 +9,11 @@ public class CarController : MonoBehaviour
     [SerializeField] float drag = 2f;
     [SerializeField] float lateralGrip = 8f;
 
+    [Header("Braking / Drift")]
+    [SerializeField] float hardBrakeForce = 50f;
+    [SerializeField] float driftGripMultiplier = 0.15f;
+    [SerializeField] float driftTurnBoost = 1.8f;
+
     [Header("Steering")]
     [SerializeField] float turnSpeed = 120f;
     [SerializeField] float minSpeedForTurn = 1f;
@@ -35,6 +40,7 @@ public class CarController : MonoBehaviour
     float steerInput;
     float throttle;
     float wheelSpinAngle;
+    bool isBraking;
 
     public float CurrentSpeed => currentSpeed;
     public float CurrentSpeedKmh => currentSpeed * 3.6f;
@@ -42,6 +48,7 @@ public class CarController : MonoBehaviour
     public float ThrottleNormalized => throttle;
     public float MaxSpeed => maxSpeed;
     public float SteerInput => steerInput;
+    public bool IsBraking => isBraking;
     public Vector3 Velocity => rb ? rb.linearVelocity : Vector3.zero;
 
     void Awake()
@@ -85,31 +92,45 @@ public class CarController : MonoBehaviour
 
     public void SetSteerInput(float value) => steerInput = Mathf.Clamp(value, -1f, 1f);
     public void SetThrottle(float value) => throttle = Mathf.Clamp01(value);
+    public void SetBrake(bool active) => isBraking = active;
 
     void FixedUpdate()
     {
-        float targetSpeed = maxSpeed * throttle;
         currentSpeed = Vector3.Dot(rb.linearVelocity, transform.forward);
 
-        float speedDiff = targetSpeed - currentSpeed;
-        if (Mathf.Abs(speedDiff) > 0.1f)
+        if (isBraking)
         {
-            float forceAmount = speedDiff > 0f ? acceleration : -brakeForce;
-            rb.AddForce(transform.forward * forceAmount, ForceMode.Acceleration);
+            // Hard brake: strong deceleration force opposing forward motion
+            if (Mathf.Abs(currentSpeed) > 0.5f)
+                rb.AddForce(-transform.forward * hardBrakeForce * Mathf.Sign(currentSpeed), ForceMode.Acceleration);
+        }
+        else
+        {
+            float targetSpeed = maxSpeed * throttle;
+            float speedDiff = targetSpeed - currentSpeed;
+            if (Mathf.Abs(speedDiff) > 0.1f)
+            {
+                float forceAmount = speedDiff > 0f ? acceleration : -brakeForce;
+                rb.AddForce(transform.forward * forceAmount, ForceMode.Acceleration);
+            }
         }
 
         if (rb.linearVelocity.magnitude > maxSpeed)
             rb.linearVelocity = rb.linearVelocity.normalized * maxSpeed;
 
+        // Steering — drift boost when braking lets the tail slide out
         if (Mathf.Abs(currentSpeed) > minSpeedForTurn)
         {
             float speedFactor = Mathf.Clamp01(Mathf.Abs(currentSpeed) / (maxSpeed * turnSpeedFalloff));
-            float turn = steerInput * turnSpeed * speedFactor * Time.fixedDeltaTime;
+            float turnMul = isBraking ? driftTurnBoost : 1f;
+            float turn = steerInput * turnSpeed * speedFactor * turnMul * Time.fixedDeltaTime;
             rb.MoveRotation(rb.rotation * Quaternion.Euler(0f, turn, 0f));
         }
 
+        // Lateral grip — reduced when braking to cause drift
+        float grip = isBraking ? lateralGrip * driftGripMultiplier : lateralGrip;
         Vector3 lateralVelocity = Vector3.Dot(rb.linearVelocity, transform.right) * transform.right;
-        rb.AddForce(-lateralVelocity * lateralGrip, ForceMode.Acceleration);
+        rb.AddForce(-lateralVelocity * grip, ForceMode.Acceleration);
     }
 
     void Update()

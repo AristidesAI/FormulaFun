@@ -9,8 +9,8 @@ export class GridSystem {
 
     /**
      * Compute which grid cells a piece occupies given anchor position and rotation.
-     * Kenney models anchor at (X=0, Z=0) and extend into -X and +Z.
-     * At rotation 0: dx in [-(W-1)..0], dz in [0..(D-1)]
+     * At rotation 0, pieces extend in +X and +Z from the anchor cell.
+     * Rotation is CW when viewed from above (matching Three.js rotation.y = -deg).
      */
     getOccupiedCells(pieceDef, anchorX, anchorZ, rotation) {
         const w = pieceDef.gridW;
@@ -22,23 +22,23 @@ export class GridSystem {
 
         switch (rot) {
             case 0:
-                dxMin = -(w - 1); dxMax = 0;
+                dxMin = 0;        dxMax = w - 1;
                 dzMin = 0;        dzMax = d - 1;
                 break;
             case 90:
-                dxMin = 0;        dxMax = d - 1;
+                dxMin = -(d - 1); dxMax = 0;
                 dzMin = 0;        dzMax = w - 1;
                 break;
             case 180:
-                dxMin = 0;        dxMax = w - 1;
+                dxMin = -(w - 1); dxMax = 0;
                 dzMin = -(d - 1); dzMax = 0;
                 break;
             case 270:
-                dxMin = -(d - 1); dxMax = 0;
+                dxMin = 0;        dxMax = d - 1;
                 dzMin = -(w - 1); dzMax = 0;
                 break;
             default:
-                dxMin = -(w - 1); dxMax = 0;
+                dxMin = 0;        dxMax = w - 1;
                 dzMin = 0;        dzMax = d - 1;
         }
 
@@ -50,11 +50,28 @@ export class GridSystem {
         return cells;
     }
 
+    /**
+     * Compute the world-space center of occupied cells (for model positioning).
+     * Each cell (x,z) has its center at (x+0.5, z+0.5).
+     */
+    getCellCenter(pieceDef, anchorX, anchorZ, rotation) {
+        const cells = this.getOccupiedCells(pieceDef, anchorX, anchorZ, rotation);
+        let cx = 0, cz = 0;
+        for (const [x, z] of cells) {
+            cx += x + 0.5;
+            cz += z + 0.5;
+        }
+        cx /= cells.length;
+        cz /= cells.length;
+        return { x: cx, z: cz };
+    }
+
     canPlace(pieceDef, anchorX, anchorZ, rotation) {
         const cells = this.getOccupiedCells(pieceDef, anchorX, anchorZ, rotation);
         for (const [x, z] of cells) {
             if (x < 0 || x >= this.size || z < 0 || z >= this.size) return false;
-            if (this.occupancy[x][z] !== null) return false;
+            // Free-place pieces skip occupancy check
+            if (!pieceDef.freePlace && this.occupancy[x][z] !== null) return false;
         }
         return true;
     }
@@ -64,9 +81,13 @@ export class GridSystem {
 
         const id = this.nextId++;
         const cells = this.getOccupiedCells(pieceDef, anchorX, anchorZ, rotation);
+        const free = !!pieceDef.freePlace;
 
-        for (const [x, z] of cells) {
-            this.occupancy[x][z] = id;
+        // Free-place pieces don't mark occupancy
+        if (!free) {
+            for (const [x, z] of cells) {
+                this.occupancy[x][z] = id;
+            }
         }
 
         const placed = {
@@ -76,6 +97,7 @@ export class GridSystem {
             anchorZ,
             rotation: ((rotation % 360) + 360) % 360,
             cells,
+            freePlace: free,
         };
         this.pieces.set(id, placed);
         return placed;
@@ -84,9 +106,12 @@ export class GridSystem {
     remove(pieceId) {
         const piece = this.pieces.get(pieceId);
         if (!piece) return false;
-        for (const [x, z] of piece.cells) {
-            if (x >= 0 && x < this.size && z >= 0 && z < this.size) {
-                this.occupancy[x][z] = null;
+        // Only clear occupancy for non-freePlace pieces
+        if (!piece.freePlace) {
+            for (const [x, z] of piece.cells) {
+                if (x >= 0 && x < this.size && z >= 0 && z < this.size) {
+                    this.occupancy[x][z] = null;
+                }
             }
         }
         this.pieces.delete(pieceId);
