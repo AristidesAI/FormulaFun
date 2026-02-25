@@ -144,18 +144,27 @@ export class PlacementController {
     }
 
     instantiatePiece(placed) {
-        const model = getClone(placed.modelId);
-        if (!model) return;
+        const clone = getClone(placed.modelId);
+        if (!clone) return;
         const def = getPieceDef(placed.modelId);
         if (!def) return;
-        // Position model at the center of its occupied cells
+
+        // Center the model geometry at origin so rotation works around the cell center.
+        // Kenney models are corner-anchored (0,0 to W,D), not centered at origin.
+        const box = new THREE.Box3().setFromObject(clone);
+        const modelCenter = box.getCenter(new THREE.Vector3());
+        clone.position.set(-modelCenter.x, 0, -modelCenter.z);
+
+        const group = new THREE.Group();
+        group.add(clone);
+
         const center = this.grid.getCellCenter(def, placed.anchorX, placed.anchorZ, placed.rotation);
-        model.position.set(center.x, 0, center.z);
-        model.rotation.y = THREE.MathUtils.degToRad(-placed.rotation);
-        model.userData.pieceId = placed.id;
-        model.traverse(child => { child.userData.pieceId = placed.id; });
-        this.scene.add(model);
-        this.placedMeshes.set(placed.id, model);
+        group.position.set(center.x, 0, center.z);
+        group.rotation.y = THREE.MathUtils.degToRad(-placed.rotation);
+        group.userData.pieceId = placed.id;
+        group.traverse(child => { child.userData.pieceId = placed.id; });
+        this.scene.add(group);
+        this.placedMeshes.set(placed.id, group);
     }
 
     // --- Private: pointer handling ---
@@ -259,10 +268,18 @@ export class PlacementController {
         this._removeGhost();
         if (!this.selectedPieceDef) return;
 
-        const model = getClone(this.selectedPieceDef.modelId);
-        if (!model) return;
+        const clone = getClone(this.selectedPieceDef.modelId);
+        if (!clone) return;
 
-        model.traverse(child => {
+        // Center the model geometry at origin for correct rotation
+        const box = new THREE.Box3().setFromObject(clone);
+        const modelCenter = box.getCenter(new THREE.Vector3());
+        clone.position.set(-modelCenter.x, 0, -modelCenter.z);
+
+        const group = new THREE.Group();
+        group.add(clone);
+
+        clone.traverse(child => {
             if (child.isMesh) {
                 child.material = child.material.clone();
                 child.material.transparent = true;
@@ -270,11 +287,10 @@ export class PlacementController {
                 child.material.depthWrite = false;
             }
         });
-        model.rotation.y = THREE.MathUtils.degToRad(-this.currentRotation);
-        model.renderOrder = 999;
-        model.visible = false; // hidden until mouse enters grid
-        this.ghostMesh = model;
-        this.scene.add(model);
+        group.rotation.y = THREE.MathUtils.degToRad(-this.currentRotation);
+        group.visible = false; // hidden until mouse enters grid
+        this.ghostMesh = group;
+        this.scene.add(group);
     }
 
     _removeGhost() {
