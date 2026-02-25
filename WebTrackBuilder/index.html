@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FormulaFun Track Builder</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Top Toolbar -->
+    <div id="toolbar">
+        <span class="toolbar-title">FormulaFun Track Builder</span>
+        <div class="toolbar-separator"></div>
+        <button id="btn-new" title="New Track (clear all)">New</button>
+        <button id="btn-save" title="Export track as JSON">Export JSON</button>
+        <button id="btn-load" title="Import track from JSON">Import JSON</button>
+        <input type="file" id="file-input" accept=".json" hidden>
+        <div class="toolbar-separator"></div>
+        <button id="btn-rotate-cw" title="Rotate CW (R)">Rotate CW</button>
+        <button id="btn-rotate-ccw" title="Rotate CCW (Shift+R)">Rotate CCW</button>
+        <button id="btn-delete" title="Delete selected (Del)">Delete</button>
+        <div class="toolbar-separator"></div>
+        <label class="toolbar-label">
+            Name: <input type="text" id="track-name" value="My Track">
+        </label>
+        <span id="status-bar">Loading...</span>
+    </div>
+
+    <!-- Left Sidebar - Piece Palette -->
+    <div id="sidebar">
+        <div id="search-box">
+            <input type="text" id="piece-search" placeholder="Search pieces...">
+        </div>
+        <div id="piece-categories"></div>
+    </div>
+
+    <!-- 3D Viewport -->
+    <div id="viewport">
+        <canvas id="three-canvas"></canvas>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div id="loading-content">
+            <div id="loading-spinner"></div>
+            <div id="loading-text">Loading models...</div>
+            <div id="loading-progress">0 / 112</div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
