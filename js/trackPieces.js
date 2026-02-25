@@ -1,4 +1,5 @@
 export const CATEGORIES = {
+    CHECKPOINT: 'Checkpoints',
     ROAD_STRAIGHT: 'Road Straights',
     ROAD_CORNER_SMALL: 'Corners (Small)',
     ROAD_CORNER_LARGE: 'Corners (Large)',
@@ -15,7 +16,12 @@ export const CATEGORIES = {
 };
 
 // Each piece: modelId, display name, category key, grid width (X), grid depth (Z)
+// Pieces with custom:true are programmatic (no .glb file)
 export const TRACK_PIECES = [
+    // Checkpoints (programmatic markers, no .glb)
+    { modelId: '_checkpointStart',  name: 'Start / Finish',  category: 'CHECKPOINT', gridW: 1, gridD: 1, custom: true },
+    { modelId: '_checkpointWaypoint', name: 'Waypoint',      category: 'CHECKPOINT', gridW: 1, gridD: 1, custom: true },
+
     // Road Straights
     { modelId: 'roadStraight',               name: 'Straight',                category: 'ROAD_STRAIGHT',      gridW: 1, gridD: 1 },
     { modelId: 'roadStraightLong',            name: 'Straight Long',           category: 'ROAD_STRAIGHT',      gridW: 1, gridD: 2 },

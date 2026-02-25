@@ -25,8 +25,9 @@ export function exportTrackJSON(gridSystem, trackName) {
         pieces,
         metadata: {
             totalPieces: pieces.length,
-            hasStartLine: pieces.some(p => p.modelId === 'roadStart' || p.modelId === 'roadStartPositions'),
-            hasEndOrLoop: pieces.some(p => p.modelId === 'roadEnd'),
+            hasStartLine: pieces.some(p => p.modelId === 'roadStart' || p.modelId === 'roadStartPositions' || p.modelId === '_checkpointStart'),
+            hasCheckpoints: pieces.some(p => p.modelId === '_checkpointStart'),
+            waypointCount: pieces.filter(p => p.modelId === '_checkpointWaypoint').length,
         },
     };
 

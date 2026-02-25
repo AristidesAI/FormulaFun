@@ -10,32 +10,38 @@ export class PlacementController {
         this.grid = gridSystem;
         this.controls = controls;
 
-        // State
-        this.selectedPieceDef = null;   // piece definition for placement mode
-        this.currentRotation = 0;       // 0, 90, 180, 270
-        this.ghostMesh = null;          // transparent preview
+        // Placement state
+        this.selectedPieceDef = null;
+        this.currentRotation = 0;
+        this.ghostMesh = null;
         this.ghostValid = false;
-        this.ghostGridX = 0;
-        this.ghostGridZ = 0;
+        this.ghostGridX = -1;
+        this.ghostGridZ = -1;
 
-        this.placedMeshes = new Map();  // pieceId -> THREE.Group
-        this.selectedPlacedId = null;   // id of selected placed piece
+        // Placed pieces
+        this.placedMeshes = new Map();
+        this.selectedPlacedId = null;
+
+        // Action callback for undo/redo (set by main.js)
+        this.onAction = null;
 
         // Raycasting
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         this.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-        // Highlight indicator
-        this.highlightMeshes = [];
+        // Grid cell hover highlights and selection highlights
+        this.hoverHighlights = [];
+        this.selectionHighlights = [];
 
-        this._onMouseMove = this._onMouseMove.bind(this);
-        this._onClick = this._onClick.bind(this);
-        this._onContextMenu = this._onContextMenu.bind(this);
+        // Pointer tracking: distinguish click from drag
+        this._pointerDownPos = null;
+        this._pointerDownTime = 0;
 
-        canvas.addEventListener('mousemove', this._onMouseMove);
-        canvas.addEventListener('click', this._onClick);
-        canvas.addEventListener('contextmenu', this._onContextMenu);
+        this.canvas.addEventListener('pointermove', (e) => this._onPointerMove(e));
+        this.canvas.addEventListener('pointerdown', (e) => this._onPointerDown(e));
+        this.canvas.addEventListener('pointerup', (e) => this._onPointerUp(e));
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
     // --- Public API ---
@@ -52,7 +58,7 @@ export class PlacementController {
 
         if (this.ghostMesh) {
             this.ghostMesh.rotation.y = THREE.MathUtils.degToRad(-this.currentRotation);
-            this._updateGhostValidity();
+            this._updateHover();
         }
 
         if (this.selectedPlacedId !== null) {
@@ -61,6 +67,7 @@ export class PlacementController {
     }
 
     deletePlaced(pieceId) {
+        const placed = this.grid.pieces.get(pieceId);
         const mesh = this.placedMeshes.get(pieceId);
         if (mesh) {
             this.scene.remove(mesh);
@@ -69,14 +76,16 @@ export class PlacementController {
         this.grid.remove(pieceId);
         if (this.selectedPlacedId === pieceId) {
             this.selectedPlacedId = null;
-            this._clearHighlights();
+            this._clearHighlights(this.selectionHighlights);
         }
+        return placed; // for undo
     }
 
     cancel() {
         if (this.selectedPieceDef) {
             this.selectedPieceDef = null;
             this._removeGhost();
+            this._clearHighlights(this.hoverHighlights);
             document.querySelectorAll('.piece-item.selected').forEach(el => el.classList.remove('selected'));
         } else {
             this.deselectPlaced();
@@ -91,7 +100,8 @@ export class PlacementController {
         this.grid.clear();
         this.selectedPlacedId = null;
         this._removeGhost();
-        this._clearHighlights();
+        this._clearHighlights(this.hoverHighlights);
+        this._clearHighlights(this.selectionHighlights);
     }
 
     selectPlaced(pieceId) {
@@ -111,7 +121,7 @@ export class PlacementController {
         }
         const placed = this.grid.pieces.get(pieceId);
         if (placed) {
-            this._showCellHighlights(placed.cells, 0x4488ff);
+            this._showCellHighlights(placed.cells, 0x4488ff, this.selectionHighlights);
             this.currentRotation = placed.rotation;
         }
     }
@@ -128,7 +138,7 @@ export class PlacementController {
                 });
             }
             this.selectedPlacedId = null;
-            this._clearHighlights();
+            this._clearHighlights(this.selectionHighlights);
         }
     }
 
@@ -138,88 +148,49 @@ export class PlacementController {
         model.position.set(placed.anchorX, 0, placed.anchorZ);
         model.rotation.y = THREE.MathUtils.degToRad(-placed.rotation);
         model.userData.pieceId = placed.id;
-        model.traverse(child => {
-            child.userData.pieceId = placed.id;
-        });
+        model.traverse(child => { child.userData.pieceId = placed.id; });
         this.scene.add(model);
         this.placedMeshes.set(placed.id, model);
     }
 
-    // --- Private ---
+    // --- Private: pointer handling ---
 
-    _createGhost() {
-        this._removeGhost();
-        if (!this.selectedPieceDef) return;
+    _onPointerMove(event) {
+        const pos = this._getGridPos(event);
+        if (!pos) return;
 
-        const model = getClone(this.selectedPieceDef.modelId);
-        if (!model) return;
-
-        model.traverse(child => {
-            if (child.isMesh) {
-                child.material = child.material.clone();
-                child.material.transparent = true;
-                child.material.opacity = 0.5;
-                child.material.depthWrite = false;
+        if (this.selectedPieceDef) {
+            this.ghostGridX = pos.x;
+            this.ghostGridZ = pos.z;
+            if (this.ghostMesh) {
+                this.ghostMesh.position.set(pos.x, 0, pos.z);
             }
-        });
-        model.rotation.y = THREE.MathUtils.degToRad(-this.currentRotation);
-        model.renderOrder = 999;
-        this.ghostMesh = model;
-        this.scene.add(model);
-    }
-
-    _removeGhost() {
-        if (this.ghostMesh) {
-            this.scene.remove(this.ghostMesh);
-            this.ghostMesh = null;
+            this._updateHover();
         }
     }
 
-    _setGhostColor(valid) {
-        this.ghostValid = valid;
-        if (!this.ghostMesh) return;
-        const color = valid ? new THREE.Color(0x00ff00) : new THREE.Color(0xff4444);
-        this.ghostMesh.traverse(child => {
-            if (child.isMesh) {
-                child.material.emissive = color;
-                child.material.emissiveIntensity = 0.3;
-            }
-        });
-    }
-
-    _updateGhostValidity() {
-        if (!this.ghostMesh || !this.selectedPieceDef) return;
-        const valid = this.grid.canPlace(
-            this.selectedPieceDef, this.ghostGridX, this.ghostGridZ, this.currentRotation
-        );
-        this._setGhostColor(valid);
-    }
-
-    _onMouseMove(event) {
-        if (!this.ghostMesh || !this.selectedPieceDef) return;
-
-        const rect = this.canvas.getBoundingClientRect();
-        this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-        this.raycaster.setFromCamera(this.mouse, this.camera);
-        const intersection = new THREE.Vector3();
-        const hit = this.raycaster.ray.intersectPlane(this.groundPlane, intersection);
-        if (!hit) return;
-
-        const gx = Math.round(intersection.x);
-        const gz = Math.round(intersection.z);
-        this.ghostGridX = gx;
-        this.ghostGridZ = gz;
-
-        this.ghostMesh.position.set(gx, 0, gz);
-        this._updateGhostValidity();
-    }
-
-    _onClick(event) {
+    _onPointerDown(event) {
         if (event.button !== 0) return;
+        this._pointerDownPos = { x: event.clientX, y: event.clientY };
+        this._pointerDownTime = Date.now();
+    }
 
-        if (this.selectedPieceDef && this.ghostMesh) {
+    _onPointerUp(event) {
+        if (event.button !== 0 || !this._pointerDownPos) return;
+        const dx = event.clientX - this._pointerDownPos.x;
+        const dy = event.clientY - this._pointerDownPos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const duration = Date.now() - this._pointerDownTime;
+        this._pointerDownPos = null;
+
+        // Only treat as a click if pointer barely moved and was quick
+        if (dist > 5 || duration > 500) return;
+
+        this._handleClick(event);
+    }
+
+    _handleClick(event) {
+        if (this.selectedPieceDef) {
             // Placement mode
             if (!this.ghostValid) return;
 
@@ -228,6 +199,9 @@ export class PlacementController {
             );
             if (placed) {
                 this.instantiatePiece(placed);
+                if (this.onAction) {
+                    this.onAction({ type: 'place', placed: { ...placed } });
+                }
             }
             return;
         }
@@ -240,9 +214,7 @@ export class PlacementController {
 
         const allMeshes = [];
         for (const group of this.placedMeshes.values()) {
-            group.traverse(child => {
-                if (child.isMesh) allMeshes.push(child);
-            });
+            group.traverse(child => { if (child.isMesh) allMeshes.push(child); });
         }
 
         const hits = this.raycaster.intersectObjects(allMeshes, false);
@@ -253,81 +225,134 @@ export class PlacementController {
                 return;
             }
         }
-
         this.deselectPlaced();
     }
 
-    _onContextMenu(event) {
-        event.preventDefault();
+    _getGridPos(event) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const pt = new THREE.Vector3();
+        const hit = this.raycaster.ray.intersectPlane(this.groundPlane, pt);
+        if (!hit) return null;
+        return { x: Math.round(pt.x), z: Math.round(pt.z) };
+    }
+
+    // --- Private: ghost + hover highlights ---
+
+    _createGhost() {
+        this._removeGhost();
+        if (!this.selectedPieceDef) return;
+
+        const model = getClone(this.selectedPieceDef.modelId);
+        if (!model) return;
+
+        model.traverse(child => {
+            if (child.isMesh) {
+                child.material = child.material.clone();
+                child.material.transparent = true;
+                child.material.opacity = 0.6;
+                child.material.depthWrite = false;
+            }
+        });
+        model.rotation.y = THREE.MathUtils.degToRad(-this.currentRotation);
+        model.renderOrder = 999;
+        model.visible = false; // hidden until mouse enters grid
+        this.ghostMesh = model;
+        this.scene.add(model);
+    }
+
+    _removeGhost() {
+        if (this.ghostMesh) {
+            this.scene.remove(this.ghostMesh);
+            this.ghostMesh = null;
+        }
+    }
+
+    _updateHover() {
+        if (!this.selectedPieceDef) {
+            this._clearHighlights(this.hoverHighlights);
+            return;
+        }
+
+        const gx = this.ghostGridX;
+        const gz = this.ghostGridZ;
+        const valid = this.grid.canPlace(this.selectedPieceDef, gx, gz, this.currentRotation);
+        this.ghostValid = valid;
+
+        // Update ghost appearance
+        if (this.ghostMesh) {
+            this.ghostMesh.visible = true;
+            const color = valid ? new THREE.Color(0x00ff00) : new THREE.Color(0xff4444);
+            this.ghostMesh.traverse(child => {
+                if (child.isMesh) {
+                    child.material.emissive = color;
+                    child.material.emissiveIntensity = 0.3;
+                }
+            });
+        }
+
+        // Show grid cell highlights under the piece
+        const cells = this.grid.getOccupiedCells(this.selectedPieceDef, gx, gz, this.currentRotation);
+        const highlightColor = valid ? 0xffffff : 0xff4444;
+        this._showCellHighlights(cells, highlightColor, this.hoverHighlights);
     }
 
     _rotatePlaced(pieceId, delta) {
         const placed = this.grid.pieces.get(pieceId);
         if (!placed) return;
-
         const def = getPieceDef(placed.modelId);
         if (!def) return;
 
         const newRotation = ((placed.rotation + delta) % 360 + 360) % 360;
-
-        // Remove from grid temporarily
         this.grid.remove(pieceId);
 
         if (this.grid.canPlace(def, placed.anchorX, placed.anchorZ, newRotation)) {
             const newPlaced = this.grid.place(def, placed.anchorX, placed.anchorZ, newRotation);
             if (newPlaced) {
-                // Remove old mesh
                 const mesh = this.placedMeshes.get(pieceId);
-                if (mesh) {
-                    this.scene.remove(mesh);
-                    this.placedMeshes.delete(pieceId);
-                }
-                // Create new mesh
+                if (mesh) { this.scene.remove(mesh); this.placedMeshes.delete(pieceId); }
                 this.instantiatePiece(newPlaced);
                 this.selectedPlacedId = newPlaced.id;
-                // Highlight with selection
                 this.selectPlaced(newPlaced.id);
                 this.currentRotation = newRotation;
             }
         } else {
-            // Can't rotate, restore original placement
-            const restored = this.grid.place(def, placed.anchorX, placed.anchorZ, placed.rotation);
-            if (restored) {
-                // Remap mesh to the restored id if it changed
-                const mesh = this.placedMeshes.get(pieceId);
-                if (mesh && restored.id !== pieceId) {
-                    this.placedMeshes.delete(pieceId);
-                    mesh.userData.pieceId = restored.id;
-                    mesh.traverse(child => { child.userData.pieceId = restored.id; });
-                    this.placedMeshes.set(restored.id, mesh);
-                    this.selectedPlacedId = restored.id;
-                }
-            }
+            this.grid.place(def, placed.anchorX, placed.anchorZ, placed.rotation);
         }
     }
 
-    _showCellHighlights(cells, color) {
-        this._clearHighlights();
-        const mat = new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.15,
-            depthWrite: false,
+    // --- Private: cell highlights ---
+
+    _showCellHighlights(cells, color, arr) {
+        this._clearHighlights(arr);
+        const fillMat = new THREE.MeshBasicMaterial({
+            color, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide,
         });
+        const edgeMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 });
+
         for (const [x, z] of cells) {
-            const geo = new THREE.PlaneGeometry(1, 1);
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.rotation.x = -Math.PI / 2;
-            mesh.position.set(x, 0.02, z);
-            this.scene.add(mesh);
-            this.highlightMeshes.push(mesh);
+            const quad = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96), fillMat);
+            quad.rotation.x = -Math.PI / 2;
+            quad.position.set(x, 0.015, z);
+            this.scene.add(quad);
+            arr.push(quad);
+
+            const pts = [
+                new THREE.Vector3(-0.48, 0, -0.48), new THREE.Vector3(0.48, 0, -0.48),
+                new THREE.Vector3(0.48, 0, 0.48), new THREE.Vector3(-0.48, 0, 0.48),
+                new THREE.Vector3(-0.48, 0, -0.48),
+            ];
+            const edge = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), edgeMat);
+            edge.position.set(x, 0.025, z);
+            this.scene.add(edge);
+            arr.push(edge);
         }
     }
 
-    _clearHighlights() {
-        for (const m of this.highlightMeshes) {
-            this.scene.remove(m);
-        }
-        this.highlightMeshes = [];
+    _clearHighlights(arr) {
+        for (const m of arr) this.scene.remove(m);
+        arr.length = 0;
     }
 }

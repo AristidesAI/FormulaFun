@@ -1,17 +1,16 @@
 import { CATEGORIES } from './trackPieces.js';
+import { renderThumbnail } from './modelLoader.js';
 
 export function buildPalette(pieces, onSelect) {
     const container = document.getElementById('piece-categories');
     container.innerHTML = '';
 
-    // Group pieces by category
     const grouped = {};
     for (const piece of pieces) {
         if (!grouped[piece.category]) grouped[piece.category] = [];
         grouped[piece.category].push(piece);
     }
 
-    // Build category accordions in CATEGORIES order
     for (const [catKey, catName] of Object.entries(CATEGORIES)) {
         const catPieces = grouped[catKey];
         if (!catPieces || catPieces.length === 0) continue;
@@ -34,15 +33,52 @@ export function buildPalette(pieces, onSelect) {
             item.dataset.modelId = piece.modelId;
             item.dataset.name = piece.name.toLowerCase();
 
+            // Thumbnail image
+            const thumb = document.createElement('div');
+            thumb.className = 'piece-thumb';
+            const dataUrl = renderThumbnail(piece.modelId);
+            if (dataUrl) {
+                thumb.style.backgroundImage = `url(${dataUrl})`;
+                thumb.style.backgroundSize = 'contain';
+                thumb.style.backgroundRepeat = 'no-repeat';
+                thumb.style.backgroundPosition = 'center';
+            } else if (piece.modelId === '_checkpointStart') {
+                thumb.style.background = 'linear-gradient(135deg, #00cc44, #cccc00)';
+                thumb.textContent = 'S/F';
+                thumb.style.display = 'flex';
+                thumb.style.alignItems = 'center';
+                thumb.style.justifyContent = 'center';
+                thumb.style.fontSize = '10px';
+                thumb.style.fontWeight = '700';
+                thumb.style.color = '#fff';
+            } else if (piece.modelId === '_checkpointWaypoint') {
+                thumb.style.background = 'linear-gradient(135deg, #4488ff, #44ccff)';
+                thumb.textContent = 'WP';
+                thumb.style.display = 'flex';
+                thumb.style.alignItems = 'center';
+                thumb.style.justifyContent = 'center';
+                thumb.style.fontSize = '10px';
+                thumb.style.fontWeight = '700';
+                thumb.style.color = '#fff';
+            } else {
+                thumb.style.background = '#222';
+            }
+            item.appendChild(thumb);
+
+            const info = document.createElement('div');
+            info.className = 'piece-info';
+
             const nameSpan = document.createElement('span');
+            nameSpan.className = 'piece-name';
             nameSpan.textContent = piece.name;
 
             const sizeSpan = document.createElement('span');
             sizeSpan.className = 'piece-size';
             sizeSpan.textContent = `${piece.gridW}x${piece.gridD}`;
 
-            item.appendChild(nameSpan);
-            item.appendChild(sizeSpan);
+            info.appendChild(nameSpan);
+            info.appendChild(sizeSpan);
+            item.appendChild(info);
 
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -58,7 +94,7 @@ export function buildPalette(pieces, onSelect) {
         container.appendChild(body);
     }
 
-    // Search filter
+    // Search
     const searchInput = document.getElementById('piece-search');
     searchInput.addEventListener('input', () => {
         const query = searchInput.value.toLowerCase().trim();
@@ -66,7 +102,6 @@ export function buildPalette(pieces, onSelect) {
             const matches = !query || item.dataset.name.includes(query) || item.dataset.modelId.toLowerCase().includes(query);
             item.style.display = matches ? '' : 'none';
         });
-        // Auto-expand categories with visible items when searching
         if (query) {
             document.querySelectorAll('.category-body').forEach(body => {
                 const hasVisible = body.querySelector('.piece-item:not([style*="display: none"])');
@@ -79,27 +114,21 @@ export function buildPalette(pieces, onSelect) {
     });
 }
 
-export function bindToolbar({ onNew, onExport, onImport, onRotateCW, onRotateCCW, onDelete }) {
+export function bindToolbar({ onNew, onExport, onImport, onRotateCW, onRotateCCW, onDelete, onUndo, onRedo }) {
     document.getElementById('btn-new').addEventListener('click', () => {
-        if (confirm('Clear all placed pieces and start a new track?')) {
-            onNew();
-        }
+        if (confirm('Clear all placed pieces and start a new track?')) onNew();
     });
-
     document.getElementById('btn-save').addEventListener('click', onExport);
-
     const fileInput = document.getElementById('file-input');
     document.getElementById('btn-load').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            onImport(e.target.files[0]);
-            fileInput.value = '';
-        }
+        if (e.target.files.length > 0) { onImport(e.target.files[0]); fileInput.value = ''; }
     });
-
     document.getElementById('btn-rotate-cw').addEventListener('click', onRotateCW);
     document.getElementById('btn-rotate-ccw').addEventListener('click', onRotateCCW);
     document.getElementById('btn-delete').addEventListener('click', onDelete);
+    document.getElementById('btn-undo').addEventListener('click', onUndo);
+    document.getElementById('btn-redo').addEventListener('click', onRedo);
 }
 
 export function setStatus(text) {
